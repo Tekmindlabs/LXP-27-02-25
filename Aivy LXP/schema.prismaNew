@@ -1,0 +1,2097 @@
+// This is the new streamlined schema with backward compatibility
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Institution Level - Core Structure
+model Institution {
+  id                String     @id @default(cuid())
+  name              String
+  code              String     @unique
+  type              InstitutionType @default(UNIVERSITY)
+  status            Status     @default(ACTIVE)
+  
+  // Core Institution-level Relations
+  programs          Program[]
+  campuses          Campus[]
+  academicYears     AcademicYear[]
+  
+  // Institution-wide Settings
+  settings          Json?      // Consolidated settings
+  branding          Json?      // Branding settings
+  academicPolicies  Json?      // Academic policies
+  
+  // Multi-tenant configuration
+  shardId           String?
+  partitionKey      String?
+  
+  @@index([shardId])
+  @@index([partitionKey])
+}
+
+// Program Level - Academic Structure
+model Program {
+  id                String     @id @default(cuid())
+  name              String
+  code              String     @unique
+  description       String?
+  duration          Int        // In years
+  status            Status     @default(ACTIVE)
+  
+  // Institution association
+  institutionId     String
+  institution       Institution @relation(fields: [institutionId], references: [id])
+  
+  // Program-level Relations
+  courses           Course[]
+  curriculum        Curriculum?
+  termSystem        TermSystem?
+  learningPaths     LearningPath[]
+  
+  // Campus Implementation
+  campusPrograms    CampusProgram[]
+  
+  // Program-wide Settings
+  settings          Json?      // Program settings
+  gradingPolicy     Json?      // Program-specific grading policy
+  
+  @@index([institutionId])
+}
+
+// Campus Level - Implementation Structure
+model Campus {
+  id                String     @id @default(cuid())
+  name              String
+  code              String     @unique
+  type              CampusType @default(MAIN)
+  status            Status     @default(ACTIVE)
+  
+  // Institution association
+  institutionId     String
+  institution       Institution @relation(fields: [institutionId], references: [id])
+  
+  // Campus-level Relations
+  programImplementations CampusProgram[]
+  rooms             CampusRoom[]
+  classes           Class[]
+  
+  // Campus-specific Settings
+  settings          Json?      // Campus settings
+  infrastructure    Json?      // Infrastructure details
+  facilities        Json?      // Available facilities
+  
+  // Location and Contact
+  address           Address?
+  contact           Contact?
+  
+  @@index([institutionId])
+}
+
+// Campus-Program Implementation
+model CampusProgram {
+  id                String     @id @default(cuid())
+  campusId          String
+  campus            Campus     @relation(fields: [campusId], references: [id])
+  programId         String
+  program           Program    @relation(fields: [programId], references: [id])
+  
+  // Implementation Details
+  classes           Class[]
+  timetables        Timetable[]
+  teachers          TeacherAssignment[]
+  students          StudentEnrollment[]
+  
+  // Campus-specific Program Settings
+  settings          Json?      // Implementation settings
+  capacity          Int?       // Student capacity
+  schedule          Json?      // Academic schedule
+  
+  @@unique([campusId, programId])
+  @@index([campusId])
+  @@index([programId])
+}
+
+// Class Implementation
+model Class {
+  id                String     @id @default(cuid())
+  name              String
+  code              String     @unique
+  
+  // Hierarchical Associations
+  campusProgramId   String
+  campusProgram     CampusProgram @relation(fields: [campusProgramId], references: [id])
+  
+  // Class Components
+  timetable         Timetable?
+  attendanceSessions AttendanceSession[]
+  activities        UnifiedActivity[]
+  gradeBook         GradeBook?
+  
+  // Class Management
+  students          StudentClass[]
+  teachers          TeacherClass[]
+  room              CampusRoom? @relation(fields: [roomId], references: [id])
+  roomId            String?
+  
+  // Class Settings
+  settings          Json?      // Class-specific settings
+  capacity          Int        @default(30)
+  
+  @@index([campusProgramId])
+  @@index([roomId])
+}
+
+// Timetable Structure
+model Timetable {
+  id                String     @id @default(cuid())
+  
+  // Class Association
+  classId           String     @unique
+  class             Class      @relation(fields: [classId], references: [id])
+  
+  // Time Configuration
+  startTime         String     // Daily start time HH:mm
+  endTime           String     // Daily end time HH:mm
+  effectiveFrom     DateTime
+  effectiveTo       DateTime?
+  
+  // Schedule Components
+  periods           Period[]
+  breakTimes        BreakTime[]
+  
+  // Validation Rules
+  settings          Json?      // Timetable settings
+  constraints       Json?      // Scheduling constraints
+  
+  @@index([classId])
+}
+
+// Attendance Tracking
+model AttendanceSession {
+  id                String     @id @default(cuid())
+  
+  // Class Association
+  classId           String
+  class             Class      @relation(fields: [classId], references: [id])
+  
+  // Session Details
+  date              DateTime
+  type              SessionType
+  mode              SessionMode @default(PHYSICAL)
+  status            Status     @default(ACTIVE)
+  
+  // Attendance Records
+  records           AttendanceRecord[]
+  
+  // Session Configuration
+  settings          Json?      // Session settings
+  location          String?    // Physical/virtual location
+  
+  @@index([classId])
+  @@index([date])
+}
+
+// Supporting models for address and contact
+model Address {
+  id                String     @id @default(cuid())
+  campusId          String     @unique
+  campus            Campus     @relation(fields: [campusId], references: [id])
+  street            String
+  city              String
+  state             String
+  country           String
+  postalCode        String
+  gpsCoordinates    String?
+}
+
+model Contact {
+  id                String     @id @default(cuid())
+  campusId          String     @unique
+  campus            Campus     @relation(fields: [campusId], references: [id])
+  email             String
+  phone             String
+  alternatePhone    String?
+  emergencyContact  String
+}
+
+// Learning Experience Models
+model LearningPath {
+  id                String     @id @default(cuid())
+  name              String
+  description       String?
+  type              PathType   @default(SEQUENTIAL)
+  status            Status     @default(ACTIVE)
+  
+  // Program association
+  programId         String
+  program           Program    @relation(fields: [programId], references: [id])
+  
+  // Relations
+  modules           LearningModule[]
+  prerequisites     LearningPathPrerequisite[]
+  enrollments       LearningPathEnrollment[]
+  badges            Badge[]
+  
+  // Configuration
+  configuration     Json?      // Learning path settings
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([programId])
+}
+
+model LearningModule {
+  id                String     @id @default(cuid())
+  name              String
+  description       String?
+  order             Int
+  type              ModuleType @default(CONTENT)
+  status            Status     @default(ACTIVE)
+  
+  // Path association
+  pathId            String
+  path              LearningPath @relation(fields: [pathId], references: [id])
+  
+  // Subject association (optional)
+  subjectId         String?
+  subject           Subject?    @relation(fields: [subjectId], references: [id])
+  
+  // Relations
+  activities        UnifiedActivity[]
+  resources         LearningResource[]
+  assessments       Assessment[]
+  progress          ModuleProgress[]
+  
+  // Configuration
+  configuration     Json?      // Module-specific settings
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([pathId])
+  @@index([subjectId])
+}
+
+// Unified Activity System
+model UnifiedActivity {
+  id                String     @id @default(cuid())
+  title             String
+  description       String?
+  type              ActivityType
+  mode              ActivityMode @default(ASYNC)
+  status            ActivityStatus @default(DRAFT)
+  
+  // Module association
+  moduleId          String
+  module            LearningModule @relation(fields: [moduleId], references: [id])
+  
+  // Class association (optional)
+  classId           String?
+  class             Class?      @relation(fields: [classId], references: [id])
+  
+  // Learning context
+  learningOutcomes  LearningOutcome[]
+  competencies      Competency[]
+  difficulty        DifficultyLevel?
+  estimatedDuration Int?       // Duration in minutes
+  
+  // Assessment configuration
+  isAssessment      Boolean    @default(false)
+  gradingSchema     Json?      // Grading criteria and rubrics
+  maxScore          Float?
+  passingScore      Float?
+  weightage         Float?     // Contribution to final grade
+  
+  // Relations
+  resources         ActivityResource[]
+  submissions       ActivitySubmission[]
+  attendanceSessions AttendanceSession[]
+  
+  // Scheduling
+  scheduleType      ScheduleType @default(FLEXIBLE)
+  startDate         DateTime?
+  endDate           DateTime?
+  deadlineType      DeadlineType?
+  lateSubmission    LateSubmissionPolicy?
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([moduleId])
+  @@index([classId])
+  @@index([type, status])
+}
+
+model ActivitySubmission {
+  id                String     @id @default(cuid())
+  activityId        String
+  activity          UnifiedActivity @relation(fields: [activityId], references: [id])
+  userId            String
+  user              User       @relation(fields: [userId], references: [id])
+  
+  // Submission data
+  content           Json       // Submission content
+  status            SubmissionStatus @default(DRAFT)
+  score             Float?
+  grade             String?
+  feedback          String?
+  attempts          Int        @default(0)
+  
+  // Grading metadata
+  gradedById        String?
+  gradedBy          User?      @relation("Grader", fields: [gradedById], references: [id])
+  gradedAt          DateTime?
+  
+  // Timestamps
+  submittedAt       DateTime?
+  lastModifiedAt    DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@unique([activityId, userId])
+  @@index([activityId])
+  @@index([userId])
+  @@index([gradedById])
+}
+
+model ActivityGrade {
+  id                String     @id @default(cuid())
+  activityId        String
+  activity          UnifiedActivity @relation(fields: [activityId], references: [id])
+  submissionId      String     @unique
+  submission        ActivitySubmission @relation(fields: [submissionId], references: [id])
+  
+  // Grade details
+  score             Float?
+  percentage        Float?
+  grade             String?
+  feedback          String?
+  status            GradeStatus @default(PENDING)
+  
+  // Grading metadata
+  gradedById        String?
+  gradedBy          User?      @relation("Grader", fields: [gradedById], references: [id])
+  gradedAt          DateTime?
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([activityId])
+  @@index([submissionId])
+  @@index([gradedById])
+}
+
+model LearningResource {
+  id                String     @id @default(cuid())
+  title             String
+  description       String?
+  type              ResourceType
+  url               String
+  format            String?    // File format or content type
+  duration          Int?       // Duration in minutes (for video/audio)
+  isPublic          Boolean    @default(false)
+  
+  // Module association
+  moduleId          String
+  module            LearningModule @relation(fields: [moduleId], references: [id])
+  
+  // Relations
+  interactions      ResourceInteraction[]
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([moduleId])
+}
+
+// Student Management
+model Enrollment {
+  id                String     @id @default(cuid())
+  enrollmentNo      String     @unique
+  status            EnrollmentStatus @default(PENDING)
+  type              EnrollmentType
+  batch             String?
+  
+  // Student association
+  studentId         String
+  student           StudentDetails @relation(fields: [studentId], references: [id])
+  
+  // Program/Course associations
+  programId         String
+  program           Program    @relation(fields: [programId], references: [id])
+  courseId          String?
+  course            Course?    @relation(fields: [courseId], references: [id])
+  
+  // Relations
+  classes           ClassStudent[]
+  learningPaths     LearningPathEnrollment[]
+  badges            StudentBadge[]
+  results           EnrollmentResult[]
+  
+  // Timestamps
+  enrolledAt        DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([studentId])
+  @@index([programId])
+  @@index([courseId])
+}
+
+model Badge {
+  id                String     @id @default(cuid())
+  name              String
+  description       String?
+  image             String
+  type              BadgeType
+  criteria          Json       // Achievement criteria
+  
+  // Associations
+  pathId            String?
+  learningPath      LearningPath? @relation(fields: [pathId], references: [id])
+  
+  // Relations
+  studentBadges     StudentBadge[]
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([pathId])
+}
+
+model StudentBadge {
+  id                String     @id @default(cuid())
+  badgeId           String
+  badge             Badge      @relation(fields: [badgeId], references: [id])
+  enrollmentId      String
+  enrollment        Enrollment @relation(fields: [enrollmentId], references: [id])
+  issuedAt          DateTime   @default(now())
+  
+  @@unique([badgeId, enrollmentId])
+  @@index([badgeId])
+  @@index([enrollmentId])
+}
+
+// Simplified Attendance System
+model AttendanceSession {
+  id                String     @id @default(cuid())
+  date              DateTime
+  type              SessionType
+  mode              SessionMode @default(PHYSICAL)
+  status            Status     @default(ACTIVE)
+  
+  // Class/Activity association
+  classId           String
+  class             Class      @relation(fields: [classId], references: [id])
+  activityId        String?
+  activity          UnifiedActivity? @relation(fields: [activityId], references: [id])
+  
+  // Session timing
+  startTime         DateTime
+  endTime           DateTime?
+  duration          Int?       // Actual duration in minutes
+  
+  // Relations
+  records           AttendanceRecord[]
+  
+  // Configuration
+  configuration     Json?      // Session-specific settings
+  location          String?    // Physical location or online meeting link
+  deviceInfo        Json?      // Device/platform information for online sessions
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([classId])
+  @@index([activityId])
+  @@index([date])
+}
+
+model AttendanceRecord {
+  id                String     @id @default(cuid())
+  sessionId         String
+  session           AttendanceSession @relation(fields: [sessionId], references: [id])
+  userId            String
+  user              User       @relation(fields: [userId], references: [id])
+  status            AttendanceStatus @default(PRESENT)
+  mode              AttendanceMode
+  
+  // Timing
+  checkInTime       DateTime?
+  checkOutTime      DateTime?
+  duration          Int?       // Duration in minutes
+  isLate           Boolean    @default(false)
+  
+  // Additional data
+  remarks           String?
+  proofOfAttendance Json?     // For online/hybrid sessions
+  location          String?    // Physical location or IP address
+  deviceInfo        Json?      // Device information
+  
+  // Verification
+  verifiedById      String?
+  verifiedBy        User?      @relation("AttendanceVerifier", fields: [verifiedById], references: [id])
+  verifiedAt        DateTime?
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@unique([sessionId, userId])
+  @@index([sessionId])
+  @@index([userId])
+  @@index([verifiedById])
+}
+
+// Result Management
+model EnrollmentResult {
+  id                String     @id @default(cuid())
+  enrollmentId      String
+  enrollment        Enrollment @relation(fields: [enrollmentId], references: [id])
+  termId            String
+  term              ProgramTerm @relation(fields: [termId], references: [id])
+  
+  // Result data
+  gpa               Float?
+  cgpa              Float?
+  totalCredits      Float?
+  earnedCredits     Float?
+  status            ResultStatus @default(PENDING)
+  
+  // Relations
+  subjects          SubjectResult[]
+  transcripts       Transcript[]
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@unique([enrollmentId, termId])
+  @@index([enrollmentId])
+  @@index([termId])
+}
+
+// Additional Enums
+enum InstitutionType {
+  UNIVERSITY
+  COLLEGE
+  SCHOOL
+  INSTITUTE
+  OTHER
+}
+
+enum PathType {
+  SEQUENTIAL
+  FLEXIBLE
+  ADAPTIVE
+}
+
+enum ModuleType {
+  CONTENT
+  PRACTICE
+  ASSESSMENT
+  PROJECT
+  WORKSHOP
+}
+
+enum ResourceType {
+  VIDEO
+  DOCUMENT
+  QUIZ
+  ASSIGNMENT
+  INTERACTIVE
+  EXTERNAL
+  OTHER
+}
+
+enum EnrollmentStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  COMPLETED
+  WITHDRAWN
+}
+
+enum EnrollmentType {
+  REGULAR
+  TRANSFER
+  EXCHANGE
+  SHORT_TERM
+}
+
+enum BadgeType {
+  ACHIEVEMENT
+  COMPLETION
+  SKILL
+  PARTICIPATION
+  EXCELLENCE
+}
+
+enum SessionType {
+  CLASS
+  LAB
+  WORKSHOP
+  ACTIVITY
+  EVENT
+}
+
+enum SessionMode {
+  PHYSICAL
+  ONLINE
+  HYBRID
+}
+
+enum AttendanceMode {
+  PHYSICAL
+  ONLINE
+  SELF_PACED
+}
+
+enum ResultStatus {
+  PENDING
+  PROCESSING
+  PUBLISHED
+  WITHHELD
+}
+
+// Base User Model
+model User {
+  id                String    @id @default(cuid())
+  name              String?
+  email             String?   @unique
+  emailVerified     DateTime?
+  image             String?
+  password          String?
+  phoneNumber       String?
+  status            Status    @default(ACTIVE)
+  userType          UserType
+  
+  // Profile
+  profile           Profile?
+  
+  // Relations
+  campusRoles       CampusRole[]
+  notifications     NotificationRecipient[]
+  sentNotifications Notification[]     @relation("SentNotifications")
+  messages          Message[]          @relation("SentMessages")
+  receivedMessages  MessageRecipient[]
+  conversations     ConversationParticipant[]
+  activityLogs      ActivityLog[]
+  auditLogs         AuditLog[]
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+// Base Profile Model
+model Profile {
+  id                String     @id @default(cuid())
+  userId            String     @unique
+  user              User       @relation(fields: [userId], references: [id])
+  type              ProfileType
+  status            Status     @default(ACTIVE)
+  
+  // Common Fields
+  employeeId        String?    @unique
+  enrollmentNo      String?    @unique
+  currentCampusId   String?
+  currentCampus     Campus?    @relation(fields: [currentCampusId], references: [id])
+  
+  // Common Details
+  personalInfo      Json?      // Structured personal information
+  preferences       Json?      // User preferences
+  accommodations    String?    // Special accommodations
+  
+  // Relations
+  documents         Document[]
+  emergencyContacts EmergencyContact[]
+  transfers         Transfer[]
+  
+  // Profile Extensions
+  teacherDetails    TeacherDetails?
+  studentDetails    StudentDetails?
+  coordinatorDetails CoordinatorDetails?
+  
+  // GDPR & Compliance
+  dataConsent       DataConsent?
+  dataRetention     DataRetention?
+  
+  // Profile Image
+  avatarUrl         String?
+  coverImageUrl     String?
+  galleryImages     ProfileImage[]
+  
+  // Audit
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([userId])
+  @@index([currentCampusId])
+}
+
+// Campus Structure
+model CampusRoom {
+  id                String     @id @default(cuid())
+  number            String
+  name              String?
+  campusId          String
+  campus            Campus     @relation(fields: [campusId], references: [id])
+  buildingName      String     // Denormalized for querying
+  floorNumber       Int?       // Denormalized for querying
+  wingName          String?    // Denormalized for querying
+  type              RoomType
+  capacity          Int
+  status            RoomStatus @default(AVAILABLE)
+  resources         Json?      // Room resources and equipment
+  
+  // Relations
+  classes           Class[]
+  periods           Period[]
+  
+  @@unique([campusId, number])
+  @@index([campusId, buildingName])
+}
+
+// Academic Structure
+model Program {
+  id                String     @id @default(cuid())
+  name              String
+  code              String     @unique
+  description       String?
+  duration          Int        // In years
+  status            Status     @default(ACTIVE)
+  
+  // Institution association
+  institutionId     String
+  institution       Institution @relation(fields: [institutionId], references: [id])
+  
+  // Relations
+  campuses          CampusProgram[]    // Through table for campus associations
+  learningPaths     LearningPath[]
+  termSystem        TermSystem?
+  curriculum        Curriculum?
+  
+  // Settings
+  settings          Json?      // Program-wide settings
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([institutionId])
+}
+
+model TermSystem {
+  id                String     @id @default(cuid())
+  name              String
+  type              TermType   @default(SEMESTER)
+  programId         String     @unique
+  program           Program    @relation(fields: [programId], references: [id])
+  
+  // Configuration
+  termsPerYear      Int        @default(2)
+  weeksPerTerm      Int        @default(16)
+  configuration     Json?      // Additional term settings
+  
+  // Relations
+  terms             Term[]
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model Term {
+  id                String     @id @default(cuid())
+  name              String
+  termNumber        Int
+  startDate         DateTime
+  endDate           DateTime
+  status            Status     @default(ACTIVE)
+  
+  // Term System association
+  termSystemId      String
+  termSystem        TermSystem @relation(fields: [termSystemId], references: [id])
+  
+  // Relations
+  assessmentPeriods AssessmentPeriod[]
+  enrollments       TermEnrollment[]
+  
+  // Configuration
+  configuration     Json?      // Term-specific settings
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@unique([termSystemId, termNumber])
+  @@index([termSystemId])
+}
+
+model AssessmentPeriod {
+  id                String     @id @default(cuid())
+  name              String
+  startDate         DateTime
+  endDate           DateTime
+  weight            Float      @default(1)
+  status            Status     @default(ACTIVE)
+  
+  // Term association
+  termId            String
+  term              Term       @relation(fields: [termId], references: [id])
+  
+  // Relations
+  assessments       Assessment[]
+  results           AssessmentResult[]
+  
+  // Configuration
+  configuration     Json?      // Period-specific settings
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([termId])
+}
+
+model TermEnrollment {
+  id                String     @id @default(cuid())
+  termId            String
+  term              Term       @relation(fields: [termId], references: [id])
+  enrollmentId      String
+  enrollment        Enrollment @relation(fields: [enrollmentId], references: [id])
+  status            EnrollmentStatus @default(ACTIVE)
+  
+  // Relations
+  results           AssessmentResult[]
+  transcript        Transcript?
+  
+  // Timestamps
+  enrolledAt        DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@unique([termId, enrollmentId])
+  @@index([termId])
+  @@index([enrollmentId])
+}
+
+model AssessmentResult {
+  id                String     @id @default(cuid())
+  periodId          String
+  period            AssessmentPeriod @relation(fields: [periodId], references: [id])
+  termEnrollmentId  String
+  termEnrollment    TermEnrollment @relation(fields: [termEnrollmentId], references: [id])
+  
+  // Result data
+  score             Float?
+  grade             String?
+  comments          String?
+  status            ResultStatus @default(PENDING)
+  
+  // Timestamps
+  gradedAt          DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@unique([periodId, termEnrollmentId])
+  @@index([periodId])
+  @@index([termEnrollmentId])
+}
+
+model Transcript {
+  id                String     @id @default(cuid())
+  termEnrollmentId  String     @unique
+  termEnrollment    TermEnrollment @relation(fields: [termEnrollmentId], references: [id])
+  
+  // Transcript data
+  gpa               Float?
+  cgpa              Float?
+  totalCredits      Float?
+  earnedCredits     Float?
+  status            TranscriptStatus @default(DRAFT)
+  type              TranscriptType
+  format            String     // PDF, DIGITAL, etc.
+  url               String?
+  metadata          Json?
+  
+  // Timestamps
+  issuedAt          DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+// Update enums
+enum TermType {
+  SEMESTER          // Two terms per year
+  TRIMESTER         // Three terms per year
+  QUARTER           // Four terms per year
+  CUSTOM            // Custom term structure
+}
+
+enum ResultStatus {
+  PENDING           // Not yet graded
+  PROCESSING        // Being processed
+  PUBLISHED         // Results published
+  WITHHELD          // Results withheld
+  UNDER_REVIEW      // Under review/appeal
+}
+
+enum TranscriptStatus {
+  DRAFT             // Being prepared
+  FINALIZED         // Ready for issue
+  ISSUED            // Officially issued
+  REVOKED           // Revoked/cancelled
+}
+
+enum TranscriptType {
+  TERM              // Term-specific transcript
+  CONSOLIDATED      // Complete program transcript
+  PROVISIONAL       // Temporary/provisional
+  DEGREE            // Final degree transcript
+}
+
+// Course and Subject Models
+model Course {
+  id                String     @id @default(cuid())
+  name              String
+  code              String     @unique
+  description       String?
+  credits           Float      @default(0)
+  status            Status     @default(ACTIVE)
+  
+  // Program association
+  programId         String
+  program           Program    @relation(fields: [programId], references: [id])
+  
+  // Relations
+  subjects          Subject[]
+  enrollments       Enrollment[]
+  learningOutcomes  LearningOutcome[]
+  competencies      Competency[]
+  
+  // Configuration
+  settings          Json?      // Course-wide settings
+  gradeSchema       Json?      // Grading configuration
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([programId])
+}
+
+model Subject {
+  id                String     @id @default(cuid())
+  name              String
+  code              String     @unique
+  description       String?
+  credits           Float      @default(0)
+  type              SubjectType @default(THEORY)
+  status            Status     @default(ACTIVE)
+  
+  // Course association
+  courseId          String
+  course            Course     @relation(fields: [courseId], references: [id])
+  
+  // Learning context
+  learningOutcomes  LearningOutcome[]
+  competencies      Competency[]
+  prerequisites     Subject[]  @relation("SubjectPrerequisites")
+  requiredFor       Subject[]  @relation("SubjectPrerequisites")
+  
+  // Relations
+  modules           LearningModule[]
+  periods           Period[]
+  teachers          TeacherSubject[]
+  grades            StudentGrade[]
+  
+  // Configuration
+  settings          Json?      // Subject-specific settings
+  assessmentSchema  Json?      // Assessment configuration
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([courseId])
+}
+
+model TeacherSubject {
+  id                String     @id @default(cuid())
+  teacherId         String
+  teacher           TeacherDetails @relation(fields: [teacherId], references: [id])
+  subjectId         String
+  subject           Subject    @relation(fields: [subjectId], references: [id])
+  isPrimary         Boolean    @default(false)
+  status            Status     @default(ACTIVE)
+  
+  // Assignment details
+  startDate         DateTime   @default(now())
+  endDate           DateTime?
+  workload          Int?       // Teaching hours per week
+  
+  @@unique([teacherId, subjectId])
+  @@index([teacherId])
+  @@index([subjectId])
+}
+
+// Add Subject Type Enum
+enum SubjectType {
+  THEORY            // Theory-based subject
+  PRACTICAL         // Practical/Lab subject
+  PROJECT           // Project work
+  INTERNSHIP        // Internship/Training
+  COMBINED          // Combined theory and practical
+}
+
+// Class Structure
+model Class {
+  id                String     @id @default(cuid())
+  name              String
+  code              String     @unique
+  status            Status     @default(ACTIVE)
+  
+  // Campus and Program associations
+  campusProgramId   String
+  campusProgram     CampusProgram @relation(fields: [campusProgramId], references: [id])
+  
+  // Room assignment
+  roomId            String?
+  room              CampusRoom? @relation(fields: [roomId], references: [id])
+  
+  // Class details
+  capacity          Int        @default(30)
+  settings          Json?      // Class-specific settings
+  
+  // Relations
+  students          StudentClass[]
+  teachers          TeacherClass[]
+  activities        UnifiedActivity[]
+  attendanceSessions AttendanceSession[]
+  gradeBook         GradeBook?
+  timetable         Timetable?
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([campusProgramId])
+  @@index([roomId])
+}
+
+model StudentClass {
+  id                String     @id @default(cuid())
+  classId           String
+  class             Class      @relation(fields: [classId], references: [id])
+  studentId         String
+  student           Student    @relation(fields: [studentId], references: [id])
+  status            Status     @default(ACTIVE)
+  joinedAt          DateTime   @default(now())
+  
+  @@unique([classId, studentId])
+  @@index([classId])
+  @@index([studentId])
+}
+
+model TeacherClass {
+  id                String     @id @default(cuid())
+  classId           String
+  class             Class      @relation(fields: [classId], references: [id])
+  teacherId         String
+  teacher           Teacher    @relation(fields: [teacherId], references: [id])
+  isClassTeacher    Boolean    @default(false)
+  subjects          String[]   // Array of subject IDs
+  status            Status     @default(ACTIVE)
+  joinedAt          DateTime   @default(now())
+  
+  @@unique([classId, teacherId])
+  @@index([classId])
+  @@index([teacherId])
+}
+
+// Simplified Assessment System
+model AssessmentSystem {
+  id                String     @id @default(cuid())
+  name              String
+  type              AssessmentSystemType
+  configuration     Json
+  
+  // Program or Class association
+  programId         String?
+  program           Program?   @relation(fields: [programId], references: [id])
+  courseId          String?
+  course            Course?    @relation(fields: [courseId], references: [id])
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([programId])
+  @@index([courseId])
+}
+
+// Simplified Grade Book
+model GradeBook {
+  id                String     @id @default(cuid())
+  classId           String     @unique
+  class             Class      @relation(fields: [classId], references: [id])
+  
+  // Relations
+  grades            StudentGrade[]
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model StudentGrade {
+  id                String     @id @default(cuid())
+  gradeBookId       String
+  gradeBook         GradeBook  @relation(fields: [gradeBookId], references: [id])
+  studentId         String
+  student           User       @relation(fields: [studentId], references: [id])
+  subjectId         String
+  subject           Subject    @relation(fields: [subjectId], references: [id])
+  termId            String
+  term              ProgramTerm @relation(fields: [termId], references: [id])
+  
+  // Grade data
+  grade             String?
+  score             Float?
+  totalMarks        Float?
+  percentage        Float?
+  isPassing         Boolean    @default(false)
+  comments          String?
+  
+  // Grading metadata
+  gradedAt          DateTime?
+  gradedById        String?
+  gradedBy          User?      @relation("GradedBy", fields: [gradedById], references: [id])
+  
+  // History
+  history           GradeHistory[]
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@unique([gradeBookId, studentId, subjectId, termId])
+  @@index([gradeBookId])
+  @@index([studentId])
+  @@index([subjectId])
+  @@index([termId])
+}
+
+// Include all necessary enums
+enum UserType {
+  ADMIN
+  TEACHER
+  COORDINATOR
+  STUDENT
+  PARENT
+  STAFF
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+  PENDING
+  ARCHIVED
+}
+
+enum RoomType {
+  CLASSROOM
+  LAB
+  LIBRARY
+  OFFICE
+  OTHER
+}
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+  RESERVED
+}
+
+enum CampusType {
+  MAIN
+  BRANCH
+  VIRTUAL
+  TEMPORARY
+}
+
+enum ActivityType {
+  ASSIGNMENT
+  QUIZ
+  TEST
+  PROJECT
+  PRESENTATION
+  DISCUSSION
+  PRACTICAL
+  OTHER
+}
+
+enum ActivityMode {
+  SYNC
+  ASYNC
+}
+
+enum ActivityStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+  COMPLETED
+}
+
+enum ActivityScope {
+  MODULE           // Scoped to a learning module
+  CLASS            // Scoped to a specific class
+  SUBJECT          // Scoped to a subject
+  PROGRAM          // Scoped to entire program
+}
+
+enum AssessmentSystemType {
+  MARKING_SCHEME
+  RUBRIC
+  CGPA
+}
+
+// Academic Calendar Structure
+model AcademicYear {
+  id                String     @id @default(cuid())
+  name              String
+  startDate         DateTime
+  endDate           DateTime
+  status            Status     @default(ACTIVE)
+  
+  // Relations
+  terms             Term[]
+  classes           Class[]
+  settings          AcademicYearSettings?
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model Curriculum {
+  id                String     @id @default(cuid())
+  name              String
+  description       String?
+  version           String     @default("1.0")
+  status            Status     @default(ACTIVE)
+  
+  // Program association
+  programId         String     @unique
+  program           Program    @relation(fields: [programId], references: [id])
+  
+  // Relations
+  nodes             CurriculumNode[]
+  subjects          Subject[]
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model CurriculumNode {
+  id                String     @id @default(cuid())
+  title             String
+  description       String?
+  type              NodeType
+  order             Int        @default(0)
+  
+  // Curriculum association
+  curriculumId      String
+  curriculum        Curriculum @relation(fields: [curriculumId], references: [id])
+  
+  // Hierarchical structure
+  parentId          String?
+  parent            CurriculumNode? @relation("NodeHierarchy", fields: [parentId], references: [id])
+  children          CurriculumNode[] @relation("NodeHierarchy")
+  
+  // Learning context
+  learningOutcomes  LearningOutcome[]
+  competencies      Competency[]
+  prerequisites     CurriculumNode[] @relation("NodePrerequisites")
+  requiredFor       CurriculumNode[] @relation("NodePrerequisites")
+  
+  // Content and activities
+  resources         CurriculumResource[]
+  activities        UnifiedActivity[]
+  
+  // Enhanced metadata
+  duration          Int?       // Duration in minutes
+  difficulty        DifficultyLevel?
+  tags              String[]
+  metadata          Json?      // Additional flexible metadata
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([curriculumId])
+  @@index([parentId])
+}
+
+// Timetable Structure
+model Timetable {
+  id                String     @id @default(cuid())
+  name              String?
+  classId           String     @unique
+  class             Class      @relation(fields: [classId], references: [id])
+  startTime         String     // Daily start time in HH:mm format
+  endTime           String     // Daily end time in HH:mm format
+  
+  // Relations
+  periods           Period[]
+  breakTimes        BreakTime[]
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model Period {
+  id                String     @id @default(cuid())
+  timetableId       String
+  timetable         Timetable  @relation(fields: [timetableId], references: [id])
+  startTime         String     // HH:mm format
+  endTime           String     // HH:mm format
+  daysOfWeek        Int[]      // Array of day numbers (1-7)
+  
+  // Associations
+  subjectId         String
+  subject           Subject    @relation(fields: [subjectId], references: [id])
+  teacherId         String
+  teacher           User       @relation(fields: [teacherId], references: [id])
+  roomId            String
+  room              CampusRoom @relation(fields: [roomId], references: [id])
+  
+  // Activity integration
+  activityId        String?
+  activity          UnifiedActivity? @relation(fields: [activityId], references: [id])
+  periodType        PeriodType @default(LECTURE)
+  isAssessment      Boolean    @default(false)
+  
+  // Configuration
+  configuration     Json?      // Period-specific settings
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([timetableId])
+  @@index([subjectId])
+  @@index([teacherId])
+  @@index([roomId])
+  @@index([activityId])
+}
+
+// Notification System
+model Notification {
+  id                String     @id @default(cuid())
+  title             String
+  content           String
+  type              NotificationType
+  priority          Priority   @default(NORMAL)
+  
+  // Sender
+  senderId          String
+  sender            User       @relation("SentNotifications", fields: [senderId], references: [id])
+  
+  // Context
+  contextType       String?    // "CLASS", "COURSE", "ACTIVITY", etc.
+  contextId         String?
+  
+  // Recipients
+  recipients        NotificationRecipient[]
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  expiresAt         DateTime?
+  
+  @@index([senderId])
+  @@index([contextType, contextId])
+}
+
+model NotificationRecipient {
+  id                String     @id @default(cuid())
+  notificationId    String
+  notification      Notification @relation(fields: [notificationId], references: [id])
+  userId            String
+  user              User       @relation(fields: [userId], references: [id])
+  
+  // Status
+  isRead            Boolean    @default(false)
+  readAt            DateTime?
+  isArchived        Boolean    @default(false)
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@unique([notificationId, userId])
+  @@index([notificationId])
+  @@index([userId])
+}
+
+// Additional Enum
+enum ProfileType {
+  TEACHER
+  STUDENT
+  COORDINATOR
+  PARENT
+  STAFF
+}
+
+// Document Management System
+model Document {
+  id                String     @id @default(cuid())
+  title             String
+  description       String?
+  type              DocumentType
+  url               String
+  mimeType          String
+  size              Int
+  status            DocumentStatus @default(PENDING)
+  
+  // Relations
+  profiles          Profile[]  // Many-to-many with Profile
+  qualifications    Qualification[]
+  experiences       WorkExperience[]
+  transfers         Transfer[]
+  
+  // Metadata
+  metadata          Json?      // Flexible metadata storage
+  tags              String[]   // Searchable tags
+  version           String     @default("1.0")
+  
+  // GDPR & Compliance
+  retentionPeriod   Int?       // In months
+  expiryDate        DateTime?
+  dataClassification DataClassification @default(INTERNAL)
+  
+  // Verification
+  isVerified        Boolean    @default(false)
+  verifiedAt        DateTime?
+  verifiedById      String?
+  verifiedBy        User?      @relation(fields: [verifiedById], references: [id])
+  
+  // Audit
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([verifiedById])
+}
+
+// Transfer System
+model Transfer {
+  id                String     @id @default(cuid())
+  profileId         String
+  profile           Profile    @relation(fields: [profileId], references: [id])
+  fromCampusId      String
+  fromCampus        Campus     @relation("FromCampus", fields: [fromCampusId], references: [id])
+  toCampusId        String
+  toCampus          Campus     @relation("ToCampus", fields: [toCampusId], references: [id])
+  
+  // Transfer Details
+  type              TransferType
+  reason            String
+  effectiveDate     DateTime
+  status            TransferStatus @default(PENDING)
+  metadata          Json?      // Additional transfer-specific data
+  
+  // Approval
+  approvedById      String?
+  approvedBy        User?      @relation(fields: [approvedById], references: [id])
+  approvedAt        DateTime?
+  
+  // Document Trail
+  documents         Document[]
+  
+  // Audit
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([profileId])
+  @@index([fromCampusId])
+  @@index([toCampusId])
+  @@index([approvedById])
+}
+
+// GDPR & Compliance
+model DataConsent {
+  id                String     @id @default(cuid())
+  profileId         String     @unique
+  profile           Profile    @relation(fields: [profileId], references: [id])
+  
+  // Consent Settings
+  consentStatus     Boolean    @default(false)
+  consentDate       DateTime?
+  dataUsageConsent  Json       // Detailed consent settings
+  marketingConsent  Boolean    @default(false)
+  thirdPartyConsent Boolean    @default(false)
+  
+  // Retention Settings
+  retentionPeriod   Int        // In months
+  dataCategories    String[]   // Types of data being retained
+  deletionDate      DateTime?
+  
+  // History
+  history           ConsentHistory[]
+  
+  // Audit
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([profileId])
+}
+
+model ConsentHistory {
+  id                String     @id @default(cuid())
+  consentId         String
+  consent           DataConsent @relation(fields: [consentId], references: [id])
+  action            ConsentAction
+  details           Json
+  timestamp         DateTime   @default(now())
+  
+  @@index([consentId])
+}
+
+// Additional Enums
+enum DocumentType {
+  IDENTIFICATION    // ID documents, passports
+  ACADEMIC          // Certificates, transcripts
+  PROFESSIONAL      // Work experience, certifications
+  MEDICAL           // Health records
+  CONSENT           // Privacy consent forms
+  TRANSFER          // Transfer-related documents
+  OTHER             // Miscellaneous
+}
+
+enum DataClassification {
+  PUBLIC            // Freely accessible
+  INTERNAL          // Organization-wide access
+  CONFIDENTIAL      // Limited access
+  RESTRICTED        // Strictly controlled access
+}
+
+// Profile Extensions
+model TeacherDetails {
+  id                String     @id @default(cuid())
+  profileId         String     @unique
+  profile           Profile    @relation(fields: [profileId], references: [id])
+  teacherType       TeacherType @default(SUBJECT)
+  
+  // Professional Details
+  specialization    String[]
+  qualifications    Qualification[]
+  experience        WorkExperience[]
+  skills           String[]
+  
+  // Teaching Details
+  subjects          TeacherSubject[]
+  classes           TeacherClass[]
+  departments       TeacherDepartment[]
+  teachingLoad      TeachingLoad?
+  
+  // Multi-tenant configuration
+  shardId           String?
+  partitionKey      String?
+  
+  @@index([profileId])
+  @@index([shardId, partitionKey])
+}
+
+model StudentDetails {
+  id                String     @id @default(cuid())
+  profileId         String     @unique
+  profile           Profile    @relation(fields: [profileId], references: [id])
+  
+  // Academic Details
+  academicHistory   AcademicHistory[]
+  classes           ClassStudent[]
+  achievements      Achievement[]
+  
+  // Personal Details
+  guardian          Guardian?
+  medicalInfo       MedicalInfo?
+  specialNeeds      SpecialNeeds?
+  
+  // Educational History
+  previousEducation PreviousEducation[]
+  
+  // Multi-tenant configuration
+  shardId           String?
+  partitionKey      String?
+  
+  @@index([profileId])
+  @@index([shardId, partitionKey])
+}
+
+model CoordinatorDetails {
+  id                String     @id @default(cuid())
+  profileId         String     @unique
+  profile           Profile    @relation(fields: [profileId], references: [id])
+  coordinatorType   CoordinatorType
+  
+  // Professional Details
+  responsibilities  CoordinatorResponsibility[]
+  departments       CoordinatorDepartment[]
+  experience        WorkExperience[]
+  qualifications    Qualification[]
+  
+  // Work Details
+  workloadSettings  CoordinatorWorkload?
+  schedules         CoordinatorSchedule[]
+  
+  // Reporting Structure
+  reportsTo         CoordinatorDetails?  @relation("CoordinatorHierarchy", fields: [reportsToId], references: [id])
+  reportsToId       String?
+  subordinates      CoordinatorDetails[] @relation("CoordinatorHierarchy")
+  
+  @@index([profileId])
+  @@index([reportsToId])
+}
+
+// Supporting Models
+model Qualification {
+  id                String     @id @default(cuid())
+  title             String
+  institution       String
+  fieldOfStudy      String
+  yearCompleted     Int
+  grade            String?
+  
+  // Relations
+  teacherId         String?
+  teacher           TeacherDetails? @relation(fields: [teacherId], references: [id])
+  coordinatorId     String?
+  coordinator       CoordinatorDetails? @relation(fields: [coordinatorId], references: [id])
+  documents         Document[]
+  
+  // Verification
+  isVerified        Boolean    @default(false)
+  verifiedAt        DateTime?
+  verifiedById      String?
+  verifiedBy        User?      @relation(fields: [verifiedById], references: [id])
+  
+  // Audit
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([teacherId])
+  @@index([coordinatorId])
+  @@index([verifiedById])
+}
+
+model WorkExperience {
+  id                String     @id @default(cuid())
+  organization      String
+  position          String
+  startDate         DateTime
+  endDate           DateTime?
+  responsibilities  String[]
+  
+  // Relations
+  teacherId         String?
+  teacher           TeacherDetails? @relation(fields: [teacherId], references: [id])
+  coordinatorId     String?
+  coordinator       CoordinatorDetails? @relation(fields: [coordinatorId], references: [id])
+  documents         Document[]
+  
+  // Verification
+  isVerified        Boolean    @default(false)
+  verifiedAt        DateTime?
+  verifiedById      String?
+  verifiedBy        User?      @relation(fields: [verifiedById], references: [id])
+  
+  // Audit
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([teacherId])
+  @@index([coordinatorId])
+  @@index([verifiedById])
+}
+
+// Learning Outcomes and Competencies
+model LearningOutcome {
+  id                String     @id @default(cuid())
+  code              String     @unique
+  description       String
+  type              OutcomeType
+  level             CompetencyLevel
+  status            Status     @default(ACTIVE)
+  
+  // Relations
+  curriculumNodes   CurriculumNode[]
+  activities        UnifiedActivity[]
+  competencies      Competency[]
+  assessments       Assessment[]
+  
+  // Metadata
+  tags              String[]
+  category          String?
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model Competency {
+  id                String     @id @default(cuid())
+  code              String     @unique
+  name              String
+  description       String
+  level             CompetencyLevel
+  domain            CompetencyDomain
+  status            Status     @default(ACTIVE)
+  
+  // Relations
+  outcomes          LearningOutcome[]
+  prerequisites     Competency[]    @relation("CompetencyPrerequisites")
+  requiredFor       Competency[]    @relation("CompetencyPrerequisites")
+  activities        UnifiedActivity[]
+  assessments       Assessment[]
+  
+  // Metadata
+  indicators        Json?      // Success indicators
+  rubric           Json?      // Assessment rubric
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model CurriculumGoal {
+  id                String     @id @default(cuid())
+  title             String
+  description       String
+  type              GoalType
+  priority          Int        @default(1)
+  status            Status     @default(ACTIVE)
+  
+  // Program association
+  programId         String
+  program           Program    @relation(fields: [programId], references: [id])
+  
+  // Relations
+  outcomes          LearningOutcome[]
+  competencies      Competency[]
+  subGoals         CurriculumGoal[] @relation("GoalHierarchy")
+  parentGoal       CurriculumGoal?  @relation("GoalHierarchy", fields: [parentGoalId], references: [id])
+  parentGoalId     String?
+  
+  // Metadata
+  timeframe        String?
+  successCriteria  Json?
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([programId])
+  @@index([parentGoalId])
+}
+
+// Additional Enums
+enum OutcomeType {
+  KNOWLEDGE
+  SKILL
+  ATTITUDE
+  BEHAVIOR
+}
+
+enum CompetencyLevel {
+  NOVICE
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum CompetencyDomain {
+  COGNITIVE
+  PSYCHOMOTOR
+  AFFECTIVE
+  SOCIAL
+  TECHNICAL
+}
+
+enum GoalType {
+  PROGRAM
+  COURSE
+  MODULE
+  PERSONAL
+}
+
+enum DifficultyLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum ImageType {
+  AVATAR
+  COVER
+  GALLERY
+}
+
+// Additional Enums
+enum ScheduleType {
+  FIXED            // Specific date and time
+  FLEXIBLE         // Within a date range
+  RECURRING        // Repeating schedule
+  SELF_PACED       // No specific schedule
+}
+
+enum DeadlineType {
+  STRICT           // No submissions after deadline
+  GRACE_PERIOD     // Allow submissions within grace period
+  FLEXIBLE         // Accept late submissions with penalty
+}
+
+enum LateSubmissionPolicy {
+  NO_LATE          // No late submissions allowed
+  PENALTY          // Accept with penalty
+  APPROVAL         // Require approval
+  NO_PENALTY       // Accept without penalty
+}
+
+enum PeriodType {
+  LECTURE
+  LAB
+  TUTORIAL
+  WORKSHOP
+  ASSESSMENT
+  ACTIVITY
+}
+
+enum GradeStatus {
+  PENDING
+  GRADED
+  UNDER_REVIEW
+  APPROVED
+  PUBLISHED
+}
+
+// Add models for optimized data access
+
+model DataView {
+  id                String     @id @default(cuid())
+  name              String     @unique
+  description       String?
+  query             String     // Stored query/view definition
+  type              ViewType
+  refreshInterval   Int?       // In minutes
+  isActive          Boolean    @default(true)
+  
+  // Access control
+  roles             String[]   // Roles that can access this view
+  
+  // Performance settings
+  materialized      Boolean    @default(false)
+  partitioned       Boolean    @default(false)
+  partitionKey      String?
+  
+  // Metadata
+  lastRefreshed     DateTime?
+  refreshDuration   Int?       // Last refresh duration in seconds
+  rowCount          Int?       // Approximate row count
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([type, isActive])
+}
+
+model QueryOptimization {
+  id                String     @id @default(cuid())
+  queryPattern      String     // Query pattern to optimize
+  optimization      Json       // Optimization rules
+  isActive          Boolean    @default(true)
+  
+  // Performance metrics
+  avgDuration       Float?     // Average query duration
+  hitCount          Int        @default(0)
+  lastUsed          DateTime?
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  
+  @@index([queryPattern])
+}
+
+// Add summary tables for frequently accessed data
+model ClassSummary {
+  id                String     @id @default(cuid())
+  classId           String     @unique
+  class             Class      @relation(fields: [classId], references: [id])
+  
+  // Summary data
+  studentCount      Int
+  activeStudentCount Int
+  attendanceRate    Float
+  averageGrade     Float?
+  lastActivityDate  DateTime?
+  
+  // Performance metrics
+  activityCount     Int
+  submissionCount   Int
+  
+  // Refresh metadata
+  lastRefreshed     DateTime   @default(now())
+  nextRefresh       DateTime?
+  
+  @@index([classId])
+}
+
+model StudentSummary {
+  id                String     @id @default(cuid())
+  studentId         String     @unique
+  student           StudentDetails @relation(fields: [studentId], references: [id])
+  
+  // Academic summary
+  enrolledClasses   Int
+  completedClasses  Int
+  currentGPA       Float?
+  attendanceRate   Float?
+  
+  // Activity summary
+  totalActivities   Int
+  completedActivities Int
+  submissionRate   Float?
+  
+  // Performance indicators
+  performanceScore Float?
+  riskLevel        RiskLevel?
+  
+  // Refresh metadata
+  lastRefreshed     DateTime   @default(now())
+  nextRefresh       DateTime?
+  
+  @@index([studentId])
+}
+
+// Add new enums
+enum ViewType {
+  ANALYTICS         // For analytical queries
+  OPERATIONAL       // For operational data
+  REPORTING         // For report generation
+  AUDIT            // For audit purposes
+}
+
+enum RiskLevel {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AccessPattern {
+  FREQUENT_READ    // Frequently read, rarely updated
+  FREQUENT_WRITE   // Frequently updated
+  BALANCED         // Balanced read/write
+  ARCHIVE          // Rarely accessed
+}
+
+enum CachingStrategy {
+  NONE             // No caching
+  SHORT_TERM       // Cache for minutes
+  MEDIUM_TERM      // Cache for hours
+  LONG_TERM        // Cache for days
+}
+
+// Add sharding and partitioning support models
+
+model ShardConfig {
+  id                String     @id @default(cuid())
+  name              String     @unique
+  strategy          ShardStrategy
+  isActive          Boolean    @default(true)
+  
+  // Shard configuration
+  shardCount        Int
+  shardKey          String     // Field to use for sharding
+  shardFunction     String     // Function to determine shard
+  
+  // Performance settings
+  rebalanceThreshold Float?    // Threshold to trigger rebalancing
+  rebalanceStrategy ShardRebalanceStrategy?
+  
+  // Metadata
+  lastRebalanced    DateTime?
+  metrics           Json?      // Shard performance metrics
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model PartitionConfig {
+  id                String     @id @default(cuid())
+  name              String     @unique
+  strategy          PartitionStrategy
+  isActive          Boolean    @default(true)
+  
+  // Partition configuration
+  partitionKey      String     // Field to partition by
+  partitionRanges   Json       // Range definitions
+  retentionPolicy   Json?      // Data retention rules
+  
+  // Performance settings
+  autoPartition     Boolean    @default(false)
+  partitionInterval String?    // For time-based partitioning
+  
+  // Metadata
+  lastPartitioned   DateTime?
+  partitionCount    Int        @default(0)
+  
+  // Timestamps
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+// Add new enums
+enum ShardStrategy {
+  HASH              // Hash-based sharding
+  RANGE             // Range-based sharding
+  GEOGRAPHIC        // Geographic sharding
+  TENANT            // Tenant-based sharding
+}
+
+enum ShardRebalanceStrategy {
+  AUTOMATIC         // Automatic rebalancing
+  SCHEDULED         // Scheduled rebalancing
+  MANUAL            // Manual rebalancing
+  NONE              // No rebalancing
+}
+
+enum PartitionStrategy {
+  TIME              // Time-based partitioning
+  RANGE             // Range-based partitioning
+  LIST              // List-based partitioning
+  HASH              // Hash-based partitioning
+}
+
+// The schema is now more modular and simplified 

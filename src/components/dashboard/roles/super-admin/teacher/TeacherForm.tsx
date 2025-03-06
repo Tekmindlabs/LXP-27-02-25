@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { toast } from "sonner";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -91,11 +91,11 @@ export default function TeacherForm({
   teacherId,
   isCreate,
   onClose,
-  campusId, // Add campusId prop
+  campusId,
 }: TeacherFormProps) {
   const router = useRouter();
-  const params = useParams();
-  const role = params.role as string;
+  const searchParams = useSearchParams();
+  const role = searchParams.get('role') || 'super-admin';
   const [loading, setLoading] = useState(false);
 
   // Get all campuses (or single campus if campusId is provided)
@@ -118,6 +118,9 @@ export default function TeacherForm({
     return campuses;
   }, [campusId, singleCampus, campuses]);
 
+  // Fix the OR/nullish coalescing operator precedence
+  const campusIds = campusId ? [campusId] : (initialData.campusId ? [initialData.campusId] : []);
+  
   const form = useForm<TeacherFormValues>({
     resolver: zodResolver(teacherFormSchema),
     defaultValues: {
@@ -128,8 +131,8 @@ export default function TeacherForm({
       specialization: initialData.specialization ?? "",
       subjectIds: initialData.subjectIds ?? [],
       classIds: initialData.classIds ?? [],
-      campusIds: campusId ? [campusId] : (initialData.campusId ? [initialData.campusId] : []),
-      primaryCampusId: campusId ?? initialData.campusId ?? "",
+      campusIds: campusIds,
+      primaryCampusId: (campusId ?? (initialData.campusId ?? "")),
     },
   });
 
@@ -285,9 +288,23 @@ export default function TeacherForm({
     try {
       setLoading(true);
       if (isCreate) {
-        await createTeacher.mutateAsync(data);
+        await createTeacher.mutateAsync({
+          ...data,
+          teacherType: data.teacherType,
+        });
       } else if (teacherId) {
-        await updateTeacher.mutateAsync({ ...data, id: teacherId });
+        await updateTeacher.mutateAsync({
+          id: teacherId,
+          name: data.name,
+          email: data.email,
+          phoneNumber: data.phoneNumber,
+          teacherType: data.teacherType,
+          specialization: data.specialization,
+          subjectIds: data.subjectIds,
+          classIds: data.classIds,
+          campusIds: data.campusIds,
+          primaryCampusId: data.primaryCampusId,
+        });
       }
     } catch (error) {
       const apiError = error as ApiError;
@@ -305,6 +322,31 @@ export default function TeacherForm({
   if (teacherId && !teacherData && !isLoadingTeacher) {
     return <div>Error loading teacher data. Please try again later.</div>;
   }
+
+  // Fix the type error in the teacher filtering
+  const getTeacherDisplayName = (teacherId: string) => {
+    const teacher = availableCampuses
+      .flatMap(campus => campus.teachers || [])
+      .find(t => t && t.id === teacherId);
+    return teacher?.user?.name || "Unknown Teacher";
+  };
+
+  // Fix the values.includes type error
+  const handleCampusChange = (values: string[]) => {
+    form.setValue("campusIds", values);
+    // Reset dependent fields
+    form.setValue("classIds", []);
+    form.setValue("subjectIds", []);
+    
+    // Handle primary campus
+    const currentPrimaryCampus = form.getValues().primaryCampusId;
+    if (currentPrimaryCampus && !values.includes(currentPrimaryCampus)) {
+      form.setValue("primaryCampusId", values[0] || "");
+    }
+    if ((!currentPrimaryCampus || currentPrimaryCampus === "") && values.length > 0) {
+      form.setValue("primaryCampusId", values[0]);
+    }
+  };
 
   return (
     <Form {...form}>
@@ -466,20 +508,7 @@ export default function TeacherForm({
                               value: campus.id,
                             })) ?? []
                           }
-                          onChange={(values) => {
-                            field.onChange(values);
-                            // Reset dependent fields
-                            form.setValue("classIds", []);
-                            form.setValue("subjectIds", []);
-                            
-                            // Handle primary campus
-                            if (form.getValues().primaryCampusId && !values.includes(form.getValues().primaryCampusId)) {
-                              form.setValue("primaryCampusId", values[0] || "");
-                            }
-                            if ((!form.getValues().primaryCampusId || form.getValues().primaryCampusId === "") && values.length > 0) {
-                              form.setValue("primaryCampusId", values[0]);
-                            }
-                          }}
+                          onChange={handleCampusChange}
                           placeholder="Select campuses"
                           disabled={isLoadingCampuses}
                         />

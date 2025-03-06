@@ -1,0 +1,80 @@
+-- CreateEnum
+CREATE TYPE "TeacherType" AS ENUM ('CLASS', 'SUBJECT');
+
+-- AlterTable
+ALTER TABLE "Teacher" ADD COLUMN "teacherType" "TeacherType" NOT NULL DEFAULT 'SUBJECT',
+ADD COLUMN "specialization" TEXT;
+
+-- CreateTable
+CREATE TABLE "TeacherCampus" (
+    "id" TEXT NOT NULL,
+    "teacherId" TEXT NOT NULL,
+    "campusId" TEXT NOT NULL,
+    "isPrimary" BOOLEAN NOT NULL DEFAULT false,
+    "status" "Status" NOT NULL DEFAULT 'ACTIVE',
+    "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "TeacherCampus_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TeacherClassAssignment" (
+    "id" TEXT NOT NULL,
+    "teacherCampusId" TEXT NOT NULL,
+    "classId" TEXT NOT NULL,
+    "isClassTeacher" BOOLEAN NOT NULL DEFAULT false,
+    "status" "Status" NOT NULL DEFAULT 'ACTIVE',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "TeacherClassAssignment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TeacherSubjectAssignment" (
+    "id" TEXT NOT NULL,
+    "teacherClassAssignmentId" TEXT NOT NULL,
+    "subjectId" TEXT NOT NULL,
+    "status" "Status" NOT NULL DEFAULT 'ACTIVE',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "TeacherSubjectAssignment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TeacherCampus_teacherId_campusId_key" ON "TeacherCampus"("teacherId", "campusId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TeacherClassAssignment_teacherCampusId_classId_key" ON "TeacherClassAssignment"("teacherCampusId", "classId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TeacherSubjectAssignment_teacherClassAssignmentId_subjectId_key" ON "TeacherSubjectAssignment"("teacherClassAssignmentId", "subjectId");
+
+-- AddForeignKey
+ALTER TABLE "TeacherCampus" ADD CONSTRAINT "TeacherCampus_teacherId_fkey" FOREIGN KEY ("teacherId") REFERENCES "Teacher"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TeacherCampus" ADD CONSTRAINT "TeacherCampus_campusId_fkey" FOREIGN KEY ("campusId") REFERENCES "Campus"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TeacherClassAssignment" ADD CONSTRAINT "TeacherClassAssignment_teacherCampusId_fkey" FOREIGN KEY ("teacherCampusId") REFERENCES "TeacherCampus"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TeacherClassAssignment" ADD CONSTRAINT "TeacherClassAssignment_classId_fkey" FOREIGN KEY ("classId") REFERENCES "Class"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TeacherSubjectAssignment" ADD CONSTRAINT "TeacherSubjectAssignment_teacherClassAssignmentId_fkey" FOREIGN KEY ("teacherClassAssignmentId") REFERENCES "TeacherClassAssignment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TeacherSubjectAssignment" ADD CONSTRAINT "TeacherSubjectAssignment_subjectId_fkey" FOREIGN KEY ("subjectId") REFERENCES "Subject"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- CreateIndex
+CREATE INDEX "idx_teacher_campus_teacher" ON "TeacherCampus"("teacherId");
+CREATE INDEX "idx_teacher_campus_campus" ON "TeacherCampus"("campusId");
+CREATE INDEX "idx_teacher_class_teacher_campus" ON "TeacherClassAssignment"("teacherCampusId");
+CREATE INDEX "idx_teacher_class_class" ON "TeacherClassAssignment"("classId");
+CREATE INDEX "idx_teacher_subject_class" ON "TeacherSubjectAssignment"("teacherClassAssignmentId");
+CREATE INDEX "idx_teacher_subject_subject" ON "TeacherSubjectAssignment"("subjectId"); 
